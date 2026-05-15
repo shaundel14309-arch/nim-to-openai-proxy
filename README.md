@@ -112,11 +112,14 @@ When reporting bugs, include:
 - The error message (or "All models failed" if that's what you got)
 - Your deployment platform (Railway, Render, etc.)
 
+## Contact
+Need to reach out faster? Add me on discord `Jonttex`.
+
 ## Disclaimer
 
 I am not a professional developer. This project was built with help from AI tools and community guides. It works for me, but your mileage may vary. Use at your own risk. I am still learning JS, so the speed at which I am able to fix issues, and respond to them will vary depending on the type of issue, and how common it is.
 
 ## Support my sanity during deprecation season
 
-[ko-fi.com/jontte6](https://ko-fi.com/jontte6)
-You dont need to support me but it helps me continue to maintain my code which is already held together with hopes and dreams.
+[You dont need to support me but it helps me continue to maintain my code which is already held together with hopes and dreams.](https://ko-fi.com/jontte6)
+
