@@ -1,7 +1,6 @@
 // server.js — Robust Hybrid OpenAI ↔ NIM Proxy
 // Express 5 Compatible
 // Fixes: auth bypass, startup DDoS, silent stream failures, memory leaks, Express 5 deprecations
-// PATCH: Universal thinking model support (DeepSeek, Qwen, Nemotron, Kimi, GLM, MiniMax)
 
 const express = require('express');
 const cors = require('cors');
@@ -23,23 +22,13 @@ const ENABLE_THINKING_MODE = process.env.ENABLE_THINKING_MODE === 'true';
 const SKIP_VALIDATION = process.env.SKIP_VALIDATION === 'true';
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
 
-// NEW: Configurable reasoning effort for DeepSeek V4 models
-// Options: 'low', 'medium', 'high', 'max' (default: 'high')
-const REASONING_EFFORT = process.env.REASONING_EFFORT || 'high';
-const VALID_REASONING_EFFORTS = ['low', 'medium', 'high', 'max'];
-
 const MAX_TOKENS_LIMIT = 65536;
 const REQUEST_TIMEOUT_MS = 180000;
 const VALIDATION_TIMEOUT_MS = 15000;
-const MAX_BUFFER_SIZE = 1024 * 1024;
+const MAX_BUFFER_SIZE = 1024 * 1024; // 1MB
 
 if (SHOW_REASONING) console.log('[CONFIG] Reasoning display: ENABLED');
 if (ENABLE_THINKING_MODE) console.log('[CONFIG] Thinking mode: ENABLED');
-
-// Validate reasoning effort
-if (ENABLE_THINKING_MODE && !VALID_REASONING_EFFORTS.includes(REASONING_EFFORT)) {
-  console.warn(`[WARN] Invalid REASONING_EFFORT="${REASONING_EFFORT}". Must be one of: ${VALID_REASONING_EFFORTS.join(', ')}. Falling back to 'high'.`);
-}
 
 // ─── Config validation ──────────────────────────────────────────────────────
 
@@ -92,27 +81,13 @@ const FALLBACK_MODELS = [
   'google/gemma-4-31b-it'
 ];
 
-// PATCH: ─── Thinking Model Configuration ───────────────────────────────────
-
-const THINKING_MODEL_CONFIG = {
-  'deepseek-ai/deepseek-v4-pro': { mode: 'auto', param: null },
-  'deepseek-ai/deepseek-v4-flash': { mode: 'auto', param: null },
-  'qwen/qwen3.5-397b-a17b': { mode: 'hybrid', param: 'enable_thinking' },
-  'nvidia/nemotron-3-super-120b-a12b': { mode: 'prompt', param: null },
-  'nvidia/nemotron-3-ultra-550b-a55b': { mode: 'prompt', param: null },
-  'moonshotai/kimi-k2.6': { mode: 'auto', param: null },
-  'z-ai/glm-5.1': { mode: 'auto', param: null },
-  'minimaxai/minimax-m2.7': { mode: 'auto', param: null },
-  'minimaxai/minimax-m3': { mode: 'auto', param: null },
-  'stepfun-ai/step-3.5-flash': { mode: 'auto', param: null },
-  'stepfun-ai/step-3.7-flash': { mode: 'auto', param: null },
-};
-
 // ─── Middleware ─────────────────────────────────────────────────────────────
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
+// FIX: Extract token AFTER "Bearer " prefix, compare only the token
+// Prevents bypass when CLIENT_AUTH_KEY is empty (expected would be "Bearer " which is 7 chars)
 function extractBearerToken(authHeader) {
   if (!authHeader || typeof authHeader !== 'string') return null;
   const parts = authHeader.trim().split(' ');
@@ -161,6 +136,8 @@ app.use((req, res, next) => {
 
 // ─── Validation ─────────────────────────────────────────────────────────────
 
+// FIX: Use lightweight model listing instead of burning inference quota
+// If NIM doesn't support /models, skip validation entirely rather than DDoS-ing yourself
 async function validateModels() {
   if (SKIP_VALIDATION) {
     console.log('[VALIDATION] Skipped (SKIP_VALIDATION=true)');
@@ -233,6 +210,7 @@ async function sendDiscordAlert(invalidModels) {
 
 // ─── Helper: Safe Stream Writing ───────────────────────────────────────────
 
+// FIX: Wrap res.write in try/catch to prevent crashes on closed sockets
 function safeWrite(res, data) {
   try {
     if (!res.writableEnded && !res.destroyed && res.writable) {
@@ -245,109 +223,6 @@ function safeWrite(res, data) {
   return false;
 }
 
-// PATCH: ─── Helper: Extract content from thinking model responses ───────────
-
-function extractThinkingContent(message) {
-  if (!message) return { content: '', reasoning: null, isPromoted: false };
-  
-  let content = message.content || '';
-  // NIM uses 'reasoning' for some models, 'reasoning_content' for others
-  let reasoning = message.reasoning_content || message.reasoning || null;
-  let isPromoted = false;
-  
-  // If NIM didn't populate reasoning fields, try to extract from content
-  if (!reasoning && content) {
-    const thinkMatch = content.match(/<thinking>([\s\S]*?)<\/thinking>/);
-    if (thinkMatch) {
-      reasoning = thinkMatch[1].trim();
-      content = content.replace(/<thinking>[\s\S]*?<\/thinking>/, '').trim();
-    }
-  }
-  
-  if (!content && reasoning) {
-    content = reasoning;
-    reasoning = null;
-    isPromoted = true;
-  }
-  
-  return { content, reasoning, isPromoted };
-}
-
-
-
-// PATCH: ─── Helper: Format content with reasoning for display ─────────────
-
-function formatWithReasoning(content, reasoning, showReasoning) {
-  if (!showReasoning || !reasoning) return content;
-  if (content.includes('<thinking>')) return content;
-  const safeReasoning = reasoning.replace(/\n/g, '\\n');
-  return `<thinking>\n${safeReasoning}\n</thinking>\n\n${content}`;
-}
-
-// PATCH: ─── Helper: Build thinking-aware request ───────────────────────────
-// FIX: DeepSeek V4 on NIM requires chat_template_kwargs at ROOT level, not extra_body
-//      or the API hangs indefinitely without returning anything.
-
-function buildThinkingRequest(baseRequest, modelId, enableThinking) {
-  const config = THINKING_MODEL_CONFIG[modelId];
-  if (!config) return baseRequest;
-  
-  const chatTemplateKwargs = {};
-  
-  switch (config.mode) {
-    case 'hybrid':
-      if (enableThinking !== undefined) {
-        const extraBody = baseRequest.extra_body ? { ...baseRequest.extra_body } : {};
-        extraBody[config.param] = enableThinking;
-        console.log(`[THINKING] ${modelId}: set ${config.param}=${enableThinking}`);
-        return {
-          ...baseRequest,
-          extra_body: extraBody
-        };
-      }
-      break;
-      
-    case 'prompt':
-      if (enableThinking) {
-        const hasThinkingPrompt = baseRequest.messages?.some(
-          m => m.role === 'system' && 
-               (m.content?.toLowerCase().includes('detailed thinking') || 
-                m.content?.toLowerCase().includes('thinking on'))
-        );
-        if (!hasThinkingPrompt) {
-          console.warn(`[THINKING] ${modelId}: This model requires a system prompt with "detailed thinking on" to enable reasoning.`);
-        }
-      }
-      return baseRequest;
-      
-    case 'auto':
-      if (enableThinking) {
-        // DeepSeek V4, Kimi K2.6, GLM-5, MiniMax, Step — need chat_template_kwargs at ROOT
-        // NIM strictly requires this or the API hangs indefinitely
-        chatTemplateKwargs.thinking = true;
-        
-        // DeepSeek V4 specifically supports configurable reasoning effort
-        if (modelId.includes('deepseek-v4')) {
-          const effort = VALID_REASONING_EFFORTS.includes(REASONING_EFFORT) 
-            ? REASONING_EFFORT 
-            : 'high';
-          chatTemplateKwargs.reasoning_effort = effort;
-        }
-        
-        console.log(`[THINKING] ${modelId}: Injected chat_template_kwargs at root level`);
-      }
-      break;
-  }
-  
-  const result = { ...baseRequest };
-  
-  if (Object.keys(chatTemplateKwargs).length > 0) {
-    result.chat_template_kwargs = chatTemplateKwargs;
-  }
-  
-  return result;
-}
-
 // ─── Helper: Fallback Chain ─────────────────────────────────────────────────
 
 async function callWithFallback(baseRequest, models) {
@@ -355,11 +230,9 @@ async function callWithFallback(baseRequest, models) {
 
   for (const model of models) {
     try {
-      const thinkingRequest = buildThinkingRequest(baseRequest, model, ENABLE_THINKING_MODE);
-      
       const res = await axios.post(
         `${NIM_API_BASE}/chat/completions`,
-        thinkingRequest,
+        { ...baseRequest, model },
         {
           headers: {
             Authorization: `Bearer ${NIM_API_KEY}`,
@@ -388,7 +261,7 @@ async function callWithFallback(baseRequest, models) {
 // ─── Routes ────────────────────────────────────────────────────────────────
 
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', version: '2.2.0' });
+  res.json({ status: 'ok', version: '2.1.0' });
 });
 
 app.get('/v1/models', (req, res) => {
@@ -421,18 +294,12 @@ app.post('/v1/chat/completions', async (req, res) => {
 
     const baseRequest = {
       messages,
-      model: primaryModel,
       temperature: temperature ?? 0.7,
       max_tokens: Math.min(max_tokens ?? 2048, MAX_TOKENS_LIMIT),
-      top_p: req.body.top_p,
-      frequency_penalty: req.body.frequency_penalty,
-      presence_penalty: req.body.presence_penalty,
-      stop: req.body.stop,
       stream: stream || false,
-      tools: req.body.tools,
-      tool_choice: req.body.tool_choice,
-      response_format: req.body.response_format,
-      extra_body: undefined
+      extra_body: ENABLE_THINKING_MODE
+        ? { chat_template_kwargs: { thinking: true } }
+        : undefined
     };
 
     const { response, model: usedModel } = await callWithFallback(baseRequest, modelChain);
@@ -449,9 +316,6 @@ app.post('/v1/chat/completions', async (req, res) => {
       let reasoningOpen = false;
       let doneSent = false;
       let cleanedUp = false;
-      let reasoningBuffer = '';
-      let hasReasoning = false;
-      
 
       const cleanup = () => {
         if (cleanedUp) return;
@@ -462,26 +326,11 @@ app.post('/v1/chat/completions', async (req, res) => {
         req.removeAllListeners('close');
       };
 
-            const processLine = (line) => {
+      const processLine = (line) => {
         if (!line.startsWith('data: ')) return;
 
         if (line.includes('[DONE]')) {
           if (!doneSent) {
-            // Flush any pending reasoning before [DONE]
-            if (reasoningBuffer && SHOW_REASONING) {
-              const flushData = {
-                id: `chatcmpl-${Date.now()}`,
-                object: 'chat.completion.chunk',
-                created: Math.floor(Date.now() / 1000),
-                model: model,
-                choices: [{
-                  index: 0,
-                  delta: { content: `\n</thinking>\n\n` },
-                  finish_reason: null
-                }]
-              };
-              safeWrite(res, `data: ${JSON.stringify(flushData)}\n\n`);
-            }
             safeWrite(res, 'data: [DONE]\n\n');
             doneSent = true;
           }
@@ -494,34 +343,31 @@ app.post('/v1/chat/completions', async (req, res) => {
           const delta = data.choices?.[0]?.delta;
 
           if (delta) {
-            const { content: extractedContent, reasoning, isPromoted } = extractThinkingContent(delta);
-            
-            // If we have reasoning, buffer it
-            if (reasoning) {
-              hasReasoning = true;
-              reasoningBuffer += reasoning;
-              return; // Don't emit yet, wait for content
+            let content = delta.content || '';
+            const reasoning = delta.reasoning_content;
+
+            if (SHOW_REASONING) {
+              if (reasoning && !reasoningOpen) {
+                content = `<thinking>\n${reasoning.replace(/\n/g, '\\n')}`;
+                reasoningOpen = true;
+              } else if (reasoning) {
+                content = reasoning.replace(/\n/g, '\\n');
+              }
+
+              if (delta.content && reasoningOpen) {
+                content += `\n</thinking>\n\n${delta.content}`;
+                reasoningOpen = false;
+              }
             }
-            
-            // If we have content and were buffering reasoning, flush reasoning first
-            if (hasReasoning && SHOW_REASONING && extractedContent) {
-              const combinedContent = `<thinking>\n${reasoningBuffer.replace(/\n/g, '\\n')}\n</thinking>\n\n${extractedContent}`;
-              delta.content = combinedContent;
-              reasoningBuffer = '';
-              hasReasoning = false;
-            } else if (extractedContent) {
-              delta.content = extractedContent;
-            } else {
-              delta.content = '';
-            }
-            
+
+            delta.content = content;
             delete delta.reasoning_content;
-            delete delta.reasoning;
           }
 
           safeWrite(res, `data: ${JSON.stringify(data)}\n\n`);
 
         } catch (parseErr) {
+          // FIX: Don't silently swallow—send error to client so they know data was lost
           console.warn('[STREAM] Invalid JSON line:', line.slice(0, 100));
           safeWrite(res, `data: ${JSON.stringify({ 
             error: { 
@@ -532,7 +378,7 @@ app.post('/v1/chat/completions', async (req, res) => {
           })}\n\n`);
         }
       };
-      
+
       upstreamStream.on('data', chunk => {
         buffer += decoder.write(chunk);
 
@@ -595,6 +441,8 @@ app.post('/v1/chat/completions', async (req, res) => {
         cleanup();
       });
 
+      // FIX: Check req.destroyed (Node/Express 5) 
+      // Don't destroy already-finished streams
       req.on('close', () => {
         const clientGone = req.destroyed || !res.writable;
         
@@ -609,14 +457,19 @@ app.post('/v1/chat/completions', async (req, res) => {
       });
 
     } else {
+      // Non-streaming response
       const openaiResponse = {
         id: `chatcmpl-${Date.now()}`,
         object: 'chat.completion',
         created: Math.floor(Date.now() / 1000),
         model: model,
         choices: (response.data.choices || []).map((choice, i) => {
-          const { content: extractedContent, reasoning } = extractThinkingContent(choice.message);
-          let content = formatWithReasoning(extractedContent, reasoning, SHOW_REASONING);
+          let content = choice.message?.content || '';
+
+          if (SHOW_REASONING && choice.message?.reasoning_content) {
+            const safeReasoning = choice.message.reasoning_content.replace(/\n/g, '\\n');
+            content = `<thinking>\n${safeReasoning}\n</thinking>\n\n${content}`;
+          }
 
           return {
             index: i,
@@ -638,7 +491,7 @@ app.post('/v1/chat/completions', async (req, res) => {
       res.json(openaiResponse);
     }
 
-    } catch (error) {
+  } catch (error) {
     console.error('[PROXY] Fatal error:', error.message);
     console.error('[PROXY] NIM response:', error.response?.data);
 
@@ -661,12 +514,14 @@ app.post('/v1/chat/completions', async (req, res) => {
       res.end();
     }
 
+    // Clean up upstream stream if we have it
     if (upstreamStream && !upstreamStream.destroyed) {
       upstreamStream.destroy();
     }
   }
 });
 
+// FIX: Express 5 named wildcard — but use proper 404 handler
 app.use((req, res) => {
   res.status(404).json({
     error: {
@@ -682,11 +537,10 @@ app.use((req, res) => {
 app.listen(PORT, () => {
   console.log(`[PROXY] Hybrid proxy running on port ${PORT}`);
   console.log(`[PROXY] Max tokens limit: ${MAX_TOKENS_LIMIT}`);
-  console.log(`[PROXY] Thinking mode: ${ENABLE_THINKING_MODE ? 'ENABLED' : 'disabled'}`);
-  console.log(`[PROXY] Reasoning display: ${SHOW_REASONING ? 'ENABLED' : 'disabled'}`);
-  console.log(`[PROXY] Reasoning effort: ${REASONING_EFFORT}`);
   
+  // Run validation after server starts, non-blocking
   validateModels().catch(err => {
     console.error('[VALIDATION] Startup check failed:', err.message);
   });
 });
+  
