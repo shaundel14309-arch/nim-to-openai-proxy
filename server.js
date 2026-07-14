@@ -17,18 +17,18 @@ const NIM_API_BASE = process.env.NIM_API_BASE || 'https://integrate.api.nvidia.c
 const NIM_API_KEY = process.env.NIM_API_KEY;
 const CLIENT_AUTH_KEY = process.env.CLIENT_AUTH_KEY;
 
-const SHOW_REASONING = process.env.SHOW_REASONING === 'true';
-const ENABLE_THINKING_MODE = process.env.ENABLE_THINKING_MODE === 'true';
+const SHOW_REASONING = process.env.SHOW_REASONING === 'false';
+const ENABLE_THINKING_MODE = process.env.ENABLE_THINKING_MODE === 'false';
 const SKIP_VALIDATION = process.env.SKIP_VALIDATION === 'true';
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
 
-const MAX_TOKENS_LIMIT = 65536;
+const MAX_TOKENS_LIMIT = 128000;
 const REQUEST_TIMEOUT_MS = 180000;
 const VALIDATION_TIMEOUT_MS = 15000;
 const MAX_BUFFER_SIZE = 1024 * 1024; // 1MB
 
-if (SHOW_REASONING) console.log('[CONFIG] Reasoning display: ENABLED');
-if (ENABLE_THINKING_MODE) console.log('[CONFIG] Thinking mode: ENABLED');
+if (SHOW_REASONING) console.log('[CONFIG] Reasoning display: DISABLED);
+if (ENABLE_THINKING_MODE) console.log('[CONFIG] Thinking mode: DISABLED');
 
 // ─── Config validation ──────────────────────────────────────────────────────
 
