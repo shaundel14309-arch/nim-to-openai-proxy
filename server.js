@@ -27,6 +27,9 @@ const REQUEST_TIMEOUT_MS = 180000;
 const VALIDATION_TIMEOUT_MS = 15000;
 const MAX_BUFFER_SIZE = 1024 * 1024; // 1MB
 
+if (SHOW_REASONING) console.log('[CONFIG] Reasoning display: ENABLED');
+if (ENABLE_THINKING_MODE) console.log('[CONFIG] Thinking mode: ENABLED');
+
 // ─── Config validation ──────────────────────────────────────────────────────
 
 function validateConfig() {
