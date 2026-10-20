@@ -74,7 +74,7 @@ const MODEL_MAPPING = {
   'claude-3-opus': 'google/diffusiongemma-26b-a4b-it',
   'claude-3-sonnet': 'openai/gpt-oss-20b',
   'gemini-pro': 'nvidia/llama-3.1-nemotron-70b-instruct', 
-  'gemini-turbo': 'nvidia/llama3-chatqa-1.5-70b',
+  'glm-flash': 'nvidia/llama3-chatqa-1.5-70b',
   'gpt-3.5o': 'nvidia/nemotron-3.5-lightning-30b-a3b',
   'gpt-4-flash': 'deepseek-ai/deepseek-v4.1-flash',
   'gpt-4o': 'deepseek-ai/deepseek-v4-pro-0813', // will be replaced by 4.1 pro when it releases, currently doesn't work
@@ -87,7 +87,7 @@ const MODEL_MAPPING = {
   'google-lightest': 'meta/muse-glimmer-30b',
   'google-lighter': 'poolside/laguna-xs-2.1',
   'glm-5.3': 'z-ai/glm-5.3',
-  'glm-5.3-flash': 'z-ai/glm-5-3-flash',
+  'gemini-turbo': 'z-ai/glm-5-3-flash',
 
   // Vision-Modelle — nur Modelle, die erfolgreich auf Chat-Completions antworten.
   // Getestet am: 2026-09-17 — meta/llama-3.2-11b-vision-instruct: HTTP 200 ✓
