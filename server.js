@@ -81,13 +81,13 @@ const MODEL_MAPPING = {
   'mistral': 'mistralai/mistral-large-2-instruct', 
   'mistral-turbo': 'nv-mistralai/mistral-nemo-12b-instruct',
   'mistral-pro': 'mistralai/mistral-7b-instruct-v0.3', 
-  'mistral-nemo': 'mistralai/mistral-nemotron',
+  'mistral-nemo': 'minimaxai/minimax-m3.1-flash',
   'mistral-fast': 'nvidia/mistral-nemo-minitron-8b-8k-instruct', 
   'google-light': 'google/gemma-4-31b-it',
   'google-lightest': 'meta/muse-glimmer-30b',
   'google-lighter': 'poolside/laguna-xs-2.1',
   'glm-5.3': 'z-ai/glm-5.3',
-  'gemini-turbo': 'z-ai/glm-5-3-flash',
+  'gemini-turbo': 'z-ai/glm-5.3-flash',
 
   // Vision-Modelle — nur Modelle, die erfolgreich auf Chat-Completions antworten.
   // Getestet am: 2026-09-17 — meta/llama-3.2-11b-vision-instruct: HTTP 200 ✓
