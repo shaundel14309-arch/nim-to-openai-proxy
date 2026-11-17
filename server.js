@@ -42,7 +42,7 @@ const nim = axios.create({
 // Per-attempt timeout before falling back to the next model. Reasoning
 // models get a longer window since thinking delays first-token latency.
 // Check these against your platform's own request duration limit.
-const REQUEST_TIMEOUT_MS = Number(process.env.REQUEST_TIMEOUT_MS) || 120000;
+const REQUEST_TIMEOUT_MS = Number(process.env.REQUEST_TIMEOUT_MS) || 180000;
 const REASONING_REQUEST_TIMEOUT_MS = Number(process.env.REASONING_REQUEST_TIMEOUT_MS) || 480000;
 const VALIDATION_TIMEOUT_MS = 15000;
 const MAX_BUFFER_SIZE = 1024 * 1024; // 1MB
@@ -70,35 +70,25 @@ const MODEL_MAPPING = {
   'gpt-3.5-turbo': 'nvidia/nemotron-3-super-120b-a12b',
   'gpt-4': 'nvidia/nemotron-3-ultra-550b-a55b',
   'gpt-3.5': 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning',
-  'gpt-4-turbo': 'stepfun-ai/step-5-preview',
+  'gpt-4-turbo': 'nvidia/nemotron-3.5-super-vl-120b-a12b',
   'claude-3-opus': 'google/diffusiongemma-26b-a4b-it',
   'claude-3-sonnet': 'openai/gpt-oss-20b',
   'gemini-pro': 'nvidia/llama-3.1-nemotron-70b-instruct', 
-  'glm-flash': 'nvidia/llama3-chatqa-1.5-70b',
+  'gemini-turbo': 'nvidia/llama3-chatqa-1.5-70b',
   'gpt-3.5o': 'nvidia/nemotron-3.5-lightning-30b-a3b',
   'gpt-4-flash': 'deepseek-ai/deepseek-v4.1-flash',
-  'gpt-4o': 'deepseek-ai/deepseek-v4-pro-0813', // will be replaced by 4.1 pro when it releases, currently doesn't work
+  'gpt-4o': 'stepfun-ai/step-5-preview',
   'mistral': 'mistralai/mistral-large-2-instruct', 
   'mistral-turbo': 'nv-mistralai/mistral-nemo-12b-instruct',
   'mistral-pro': 'mistralai/mistral-7b-instruct-v0.3', 
-  'mistral-nemo': 'minimaxai/minimax-m3.1-flash',
   'mistral-fast': 'nvidia/mistral-nemo-minitron-8b-8k-instruct', 
   'google-light': 'google/gemma-4-31b-it',
   'google-lightest': 'meta/muse-glimmer-30b',
   'google-lighter': 'poolside/laguna-xs-2.1',
-  'glm-5.3': 'z-ai/glm-5.3',
-  'gemini-turbo': 'z-ai/glm-5.3-flash',
-
-  // Vision-Modelle — nur Modelle, die erfolgreich auf Chat-Completions antworten.
-  // Getestet am: 2026-09-17 — meta/llama-3.2-11b-vision-instruct: HTTP 200 ✓
-  // meta/llama-3.2-90b-vision-instruct: Timeout (HTTP 000) — nicht hinzugefügt.
-  // microsoft/phi-3-vision-128k-instruct: HTTP 404 (nicht in diesem Account) — nicht hinzugefügt.
-  // nvidia/neva-22b: HTTP 404 — nicht hinzugefügt.
-  // nvidia/vila: HTTP 404 — nicht hinzugefügt.
-  'llama-vision': 'meta/llama-3.2-11b-vision-instruct',
-  'vision': 'meta/llama-3.2-11b-vision-instruct',
-  'llama-vision-11b': 'meta/llama-3.2-11b-vision-instruct',
-  'llama-3.2-vision': 'meta/llama-3.2-11b-vision-instruct'
+  'glm-flash': 'z-ai/glm-5.3-flash',
+  'm3.1': 'minimaxai/minimax-m3.1-flash',
+  'kimi': 'moonshotai/kimi-k3.1-pro',
+  'mistral-large': 'mistralai/mistral-large-4-1t-a52b', // always the damn comma
 };
 
 // Used when an unrecognized alias is requested. Must point at a live model.
